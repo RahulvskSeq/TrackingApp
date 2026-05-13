@@ -315,11 +315,11 @@ const Overview=({dealers,currentUser,users,notes,onOpenDealer,onNavigate})=>{
       {/* Geo filter */}
       {(allCitiesOv.length>0||allStatesOv.length>0)&&(
         <div className="card" style={{marginBottom:16,padding:'12px 16px'}}>
-          <div style={{fontSize:12,fontWeight:600,color:'var(--t2)',marginBottom:10,display:'flex',alignItems:'center',gap:6}}>
+          {/* <div style={{fontSize:12,fontWeight:600,color:'var(--t2)',marginBottom:10,display:'flex',alignItems:'center',gap:6}}>
             <MapPin size={13} color="var(--acc)"/> Geography Filter
             {hasGeoFilter&&<button onClick={()=>setGeoFilter({city:'',state:''})} className="btn" style={{fontSize:10,padding:'2px 8px',marginLeft:'auto',color:'var(--red)'}}><X size={10} style={{display:'inline',verticalAlign:'middle'}}/> Clear</button>}
-          </div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          </div> */}
+          {/* <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             {allStatesOv.map(s=>(
               <button key={s} onClick={()=>setGeoFilter(f=>({...f,state:f.state===s?'':s,city:''}))} className="btn"
                 style={{fontSize:11,padding:'4px 10px',background:geoFilter.state===s?'var(--accL)':'var(--bg2)',color:geoFilter.state===s?'var(--acc)':'var(--t2)',borderColor:geoFilter.state===s?'var(--acc)':'var(--b2)'}}>
@@ -332,7 +332,7 @@ const Overview=({dealers,currentUser,users,notes,onOpenDealer,onNavigate})=>{
                 {c}
               </button>
             ))}
-          </div>
+          </div> */}
         </div>
       )}
 

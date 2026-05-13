@@ -1,224 +1,275 @@
 import { MO, CURRENT_MONTH_IDX } from '../constants';
-import { trendPct, forecast } from '../utils';
+import { trendPct, forecast, pct } from '../utils';
 
-const downloadDealerCard=(dealer,users,selectedMonthIdx)=>{
-  const sm=users[dealer.salesman];
-  const viewAchieved=dealer.months[selectedMonthIdx]||0;
-  const viewTarget=dealer.monthTargets?.[selectedMonthIdx]??dealer.target;
-  const p=viewTarget?Math.round((viewAchieved/viewTarget)*100):null;
-  const tp=trendPct(dealer.months);
-  const fc=forecast(dealer.months);
-  const total=dealer.months.reduce((a,b)=>a+b,0);
+// ── Shared canvas builder — used by both download and share ─────────────────
+function buildCanvas(dealer, users, selectedMonthIdx) {
+  const sm          = users[dealer.salesman];
+  const viewAchieved= dealer.months[selectedMonthIdx] || 0;
+  const viewTarget  = dealer.monthTargets?.[selectedMonthIdx] ?? dealer.target;
+  const p           = viewTarget ? Math.round((viewAchieved/viewTarget)*100) : null;
+  const tp          = trendPct(dealer.months);
+  const fc          = forecast(dealer.months);
+  const total       = dealer.months.reduce((a,b)=>a+b,0);
 
-  const canvas=document.createElement('canvas');
-  canvas.width=1000; canvas.height=700;
-  const ctx=canvas.getContext('2d');
+  // Canvas tall enough for: header + KPIs + bar chart + monthly table + footer
+  const W = 1000, H = 1050;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle='#080810'; ctx.fillRect(0,0,1000,700);
-  const grad=ctx.createLinearGradient(0,0,1000,0);
+  // ── Background ──────────────────────────────────────
+  ctx.fillStyle = '#080810'; ctx.fillRect(0,0,W,H);
+  const grad = ctx.createLinearGradient(0,0,W,0);
   grad.addColorStop(0,'#6366f1'); grad.addColorStop(1,'#a78bfa');
-  ctx.fillStyle=grad; ctx.fillRect(0,0,1000,4);
+  ctx.fillStyle = grad; ctx.fillRect(0,0,W,4);
 
-  ctx.fillStyle='#6366f1'; ctx.font='600 11px monospace';
-  ctx.fillText('▸ SALES TRACKER PRO',36,36);
-  ctx.fillStyle='#e2e0f0'; ctx.font='bold 26px system-ui';
-  ctx.fillText(dealer.name,36,70);
+  // ── Header ───────────────────────────────────────────
+  ctx.fillStyle = '#6366f1'; ctx.font = '600 11px monospace';
+  ctx.fillText('▸ SALES TRACKER PRO', 36, 36);
+  ctx.fillStyle = '#e2e0f0'; ctx.font = 'bold 26px system-ui';
+  ctx.fillText(dealer.name.slice(0,55), 36, 70);
 
-  const statusColors={'ACTIVE':'#34d399','ACHIVERS':'#34d399','KEY ACCOUNT':'#a78bfa','INACTIVE':'#fbbf24','DEAD':'#f87171'};
-  const sc=statusColors[(dealer.status||'').toUpperCase()]||'#9492a8';
-  ctx.fillStyle=sc+'22'; ctx.beginPath(); ctx.roundRect(36,82,(dealer.status||'').length*8+20,22,4); ctx.fill();
-  ctx.fillStyle=sc; ctx.font='600 11px system-ui';
-  ctx.fillText(dealer.status||'—',46,97);
+  const statusColors = { 'ACTIVE':'#34d399','ACHIVERS':'#34d399','ACHIEVERS':'#34d399','KEY ACCOUNT':'#a78bfa','INACTIVE':'#fbbf24','DEAD':'#f87171' };
+  const sc = statusColors[(dealer.status||'').toUpperCase()] || '#9492a8';
+  ctx.fillStyle = sc+'22';
+  ctx.beginPath(); ctx.roundRect(36, 82, (dealer.status||'').length*8+20, 22, 4); ctx.fill();
+  ctx.fillStyle = sc; ctx.font = '600 11px system-ui';
+  ctx.fillText(dealer.status||'—', 46, 97);
 
-  let xOff=36+(dealer.status||'').length*8+30;
-  if(dealer.zone){ctx.fillStyle='#55546a';ctx.font='12px system-ui';ctx.fillText(dealer.zone,xOff,97);xOff+=dealer.zone.length*8+10;}
-  if(dealer.city||dealer.state){ctx.fillStyle='#55546a';ctx.fillText([dealer.city,dealer.state].filter(Boolean).join(', '),xOff,97);}
-  if(dealer.category){xOff+=120;ctx.fillStyle='#818cf8';ctx.fillText('Cat: '+dealer.category+(dealer.categoryType?' / '+dealer.categoryType:''),xOff,97);}
+  let xOff = 36 + (dealer.status||'').length*8 + 30;
+  if(dealer.zone)       { ctx.fillStyle='#55546a'; ctx.font='12px system-ui'; ctx.fillText(dealer.zone, xOff, 97); xOff+=dealer.zone.length*8+12; }
+  if(dealer.city||dealer.state) { ctx.fillStyle='#55546a'; ctx.fillText([dealer.city,dealer.state].filter(Boolean).join(', '), xOff, 97); xOff+=120; }
+  if(dealer.category)   { ctx.fillStyle='#818cf8'; ctx.fillText(dealer.category+(dealer.categoryType?' / '+dealer.categoryType:''), xOff, 97); }
 
-  ctx.fillStyle='#1e1e30'; ctx.fillRect(36,110,928,1);
+  ctx.fillStyle = '#1e1e30'; ctx.fillRect(36,110,W-72,1);
 
-  // KPIs 4x2
-  const kpis=[
-    {label:MO[selectedMonthIdx]+' Target',value:String(viewTarget||'—'),color:'#e2e0f0'},
-    {label:MO[selectedMonthIdx]+' Achieved',value:String(viewAchieved),color:'#34d399'},
-    {label:'Achievement',value:p!==null?p+'%':'N/T',color:p===null?'#6b7280':p>=100?'#34d399':p>=60?'#fbbf24':'#f87171'},
-    {label:'6-mo Avg',value:String(dealer.avg6m||0),color:'#e2e0f0'},
-    {label:'Forecast',value:String(fc),color:'#6366f1'},
-    {label:'Trend (3m)',value:(tp>0?'+':'')+tp+'%',color:tp>0?'#34d399':tp<0?'#f87171':'#9492a8'},
-    {label:'11mo Total',value:String(total),color:'#e2e0f0'},
-    {label:'Credit Days',value:dealer.creditDays?dealer.creditDays+'d':'—',color:'#e2e0f0'},
-    {label:'Credit Limit',value:dealer.creditLimit?'₹'+dealer.creditLimit.toLocaleString('en-IN'):'—',color:'#e2e0f0'},
-    {label:'Category',value:dealer.category||'—',color:'#818cf8'},
-    {label:'Cat Type',value:dealer.categoryType||'—',color:'#818cf8'},
-    {label:'Salesman',value:sm?.name||dealer.salesman,color:'#fbbf24'},
+  // ── KPI grid (3 rows × 4 cols) ───────────────────────
+  const kpis = [
+    { label: MO[selectedMonthIdx]+' Target',  value: String(viewTarget||'—'),             color: '#e2e0f0' },
+    { label: MO[selectedMonthIdx]+' Achieved',value: String(viewAchieved),                color: '#34d399' },
+    { label: 'Achievement',                   value: p!==null?p+'%':'N/T',               color: p===null?'#6b7280':p>=100?'#34d399':p>=60?'#fbbf24':'#f87171' },
+    { label: '6-mo Avg',                      value: String(dealer.avg6m||0),            color: '#e2e0f0' },
+    { label: 'Forecast',                      value: String(fc),                         color: '#6366f1' },
+    { label: 'Trend (3m)',                    value: (tp>0?'+':'')+tp+'%',              color: tp>0?'#34d399':tp<0?'#f87171':'#9492a8' },
+    { label: '11mo Total',                    value: String(total),                      color: '#e2e0f0' },
+    { label: 'Credit Days',                   value: dealer.creditDays?dealer.creditDays+'d':'—', color:'#e2e0f0' },
+    { label: 'Credit Limit',                  value: dealer.creditLimit?'₹'+dealer.creditLimit.toLocaleString('en-IN'):'—', color:'#e2e0f0' },
+    { label: 'Category',                      value: (dealer.category||'—').slice(0,20), color: '#818cf8' },
+    { label: 'Cat Type',                      value: (dealer.categoryType||'—').slice(0,20), color:'#818cf8' },
+    { label: 'Salesman',                      value: (sm?.name||dealer.salesman).slice(0,20), color:'#fbbf24' },
   ];
-  kpis.forEach((k,i)=>{
-    const col=i%4,row=Math.floor(i/4);
-    const x=36+col*237,y=126+row*90;
-    ctx.fillStyle='#141422'; ctx.beginPath(); ctx.roundRect(x,y,222,74,8); ctx.fill();
+  kpis.forEach((k,i) => {
+    const col=i%4, row=Math.floor(i/4);
+    const x=36+col*237, y=126+row*82;
+    ctx.fillStyle='#141422'; ctx.beginPath(); ctx.roundRect(x,y,222,70,8); ctx.fill();
     ctx.fillStyle='#55546a'; ctx.font='10px system-ui';
-    ctx.fillText(k.label.toUpperCase(),x+12,y+20);
-    ctx.fillStyle=k.color; ctx.font='bold 20px system-ui';
-    ctx.fillText(k.value,x+12,y+50);
+    ctx.fillText(k.label.toUpperCase(), x+12, y+18);
+    ctx.fillStyle=k.color; ctx.font='bold 19px system-ui';
+    ctx.fillText(k.value, x+12, y+46);
   });
 
-  // Month bar chart
-  const chartY=406,chartH=120,chartW=928;
+  // ── Bar chart ────────────────────────────────────────
+  const chartY=380, chartH=110, chartW=W-72;
   const barW=Math.floor(chartW/MO.length)-4;
   const maxVal=Math.max(...dealer.months,1);
-  ctx.fillStyle='#9492a8'; ctx.font='600 12px system-ui';
-  ctx.fillText('11-Month Performance',36,chartY-10);
-  dealer.months.forEach((v,i)=>{
-    const bh=Math.max((v/maxVal)*(chartH-20),v>0?3:0);
-    const bx=36+i*(barW+4),by=chartY+chartH-bh;
-    const mt=dealer.monthTargets?.[i]??dealer.target;
-    ctx.fillStyle=i===selectedMonthIdx?'#6366f1':'#252538';
+
+  ctx.fillStyle='#9492a8'; ctx.font='600 11px system-ui';
+  ctx.fillText('11-Month Performance', 36, chartY-10);
+  ctx.fillStyle='#55546a'; ctx.font='9px system-ui';
+  ctx.fillText('dashed = target', 200, chartY-10);
+
+  dealer.months.forEach((v,i) => {
+    const bh  = Math.max((v/maxVal)*(chartH-16), v>0?3:0);
+    const bx  = 36+i*(barW+4);
+    const by  = chartY+chartH-bh;
+    const mt  = dealer.monthTargets?.[i] ?? dealer.target;
+    const isSel = i===selectedMonthIdx;
+
+    // Bar
+    ctx.fillStyle = isSel?'#6366f1':'#252538';
     ctx.beginPath(); ctx.roundRect(bx,by,barW,bh,2); ctx.fill();
-    if(mt>0){
-      const th=Math.max((mt/maxVal)*(chartH-20),2);
+
+    // Per-month target dashed line
+    if(mt>0) {
+      const th = Math.max((mt/maxVal)*(chartH-16),2);
       ctx.strokeStyle='#34d39966'; ctx.lineWidth=1.5;
       ctx.beginPath(); ctx.setLineDash([3,3]);
-      ctx.moveTo(bx,chartY+chartH-th); ctx.lineTo(bx+barW,chartY+chartH-th);
+      ctx.moveTo(bx, chartY+chartH-th);
+      ctx.lineTo(bx+barW, chartY+chartH-th);
       ctx.stroke(); ctx.setLineDash([]);
     }
-    ctx.fillStyle=i===selectedMonthIdx?'#6366f1':'#55546a';
-    ctx.font=i===selectedMonthIdx?'bold 9px system-ui':'9px system-ui';
-    ctx.fillText(MO[i].slice(0,3),bx,chartY+chartH+14);
-    if(v>0){ctx.fillStyle=i===selectedMonthIdx?'#fff':'#9492a8';ctx.font='9px system-ui';ctx.fillText(v,bx+2,by-4);}
+
+    // Month label
+    ctx.fillStyle = isSel?'#6366f1':'#55546a';
+    ctx.font = isSel?'bold 9px system-ui':'9px system-ui';
+    ctx.fillText(MO[i].slice(0,3), bx, chartY+chartH+13);
+
+    // Value label above bar
+    if(v>0) {
+      ctx.fillStyle = isSel?'#fff':'#9492a8';
+      ctx.font='8px system-ui';
+      ctx.fillText(v, bx+2, by-4);
+    }
   });
 
-  // Month targets row
-  ctx.fillStyle='#55546a'; ctx.font='10px system-ui';
-  ctx.fillText('Targets:',36,chartY+chartH+32);
-  dealer.months.forEach((v,i)=>{
-    const mt=dealer.monthTargets?.[i]??dealer.target;
-    const bx=36+i*(barW+4);
-    ctx.fillStyle=i===selectedMonthIdx?'var(--acc)':'#55546a';
-    ctx.fillText(mt||'—',bx,chartY+chartH+32);
+  // ── Monthly detail table ─────────────────────────────
+  const tblY = chartY + chartH + 30;
+  ctx.fillStyle='#9492a8'; ctx.font='600 11px system-ui';
+  ctx.fillText('Month-by-Month Breakdown', 36, tblY-8);
+
+  // Table header
+  const cols = [
+    {w:72,  label:'Month',    align:'left'},
+    {w:70,  label:'Achieved', align:'right'},
+    {w:70,  label:'Target',   align:'right'},
+    {w:65,  label:'Ach %',    align:'right'},
+    {w:65,  label:'vs Tgt %', align:'right'},
+    {w:70,  label:'Δ MoM',    align:'right'},
+    {w:65,  label:'Δ MoM %',  align:'right'},
+    {w:180, label:'Bar',      align:'left'},
+  ];
+
+  // Header row bg
+  ctx.fillStyle='#141422';
+  ctx.fillRect(36, tblY, W-72, 18);
+  let cx=40;
+  cols.forEach(col => {
+    ctx.fillStyle='#55546a'; ctx.font='bold 9px system-ui';
+    ctx.fillText(col.label, col.align==='right'?cx+col.w-ctx.measureText(col.label).width-2:cx, tblY+12);
+    cx+=col.w;
   });
 
-  ctx.fillStyle='#55546a'; ctx.font='11px monospace';
-  ctx.fillText(`Generated: ${new Date().toLocaleString('en-IN')} · Salesman: ${sm?.name||dealer.salesman}`,36,680);
-  const link=document.createElement('a');
-  link.download=`${dealer.name.replace(/[^a-z0-9]/gi,'_')}_${MO[selectedMonthIdx]}.png`;
-  link.href=canvas.toDataURL('image/png'); link.click();
+  // Data rows — newest first (reverse)
+  [...dealer.months].map((_,di)=>{
+    const i   = dealer.months.length-1-di;
+    const v   = dealer.months[i];
+    const mt  = dealer.monthTargets?.[i] ?? dealer.target;
+    const prev= i>0?dealer.months[i-1]:null;
+    const diff= prev!=null?v-prev:null;
+    const diffP= prev&&prev>0?Math.round(((v-prev)/prev)*100):null;
+    const vsPct= mt?Math.round((v/mt)*100):null;
+    const achPct= total>0?Math.round((v/total)*100):0;
+    const isSel= i===selectedMonthIdx;
+    const isCur= i===CURRENT_MONTH_IDX;
+
+    const rowY = tblY+18+di*18;
+    if(rowY+18 > H-30) return; // don't overflow canvas
+
+    // Row background
+    ctx.fillStyle = isSel?'rgba(99,102,241,0.12)':di%2===0?'#0d0d1a':'#080810';
+    ctx.fillRect(36, rowY, W-72, 18);
+
+    let rx=40;
+
+    // Month
+    ctx.fillStyle = isSel?'#6366f1':isCur?'#34d399':'#9492a8';
+    ctx.font = isSel?'bold 9px system-ui':isCur?'600 9px system-ui':'9px system-ui';
+    ctx.fillText(MO[i]+(isCur?' ★':'')+(isSel?' ◀':''), rx, rowY+12);
+    rx+=72;
+
+    // Achieved
+    ctx.fillStyle=v>0?'#e2e0f0':'#3a3a50'; ctx.font='600 9px system-ui';
+    const achStr=String(v||'—');
+    ctx.fillText(achStr, rx+70-ctx.measureText(achStr).width-2, rowY+12);
+    rx+=70;
+
+    // Target
+    ctx.fillStyle='#55546a'; ctx.font='9px system-ui';
+    const tgtStr=String(mt||'—');
+    ctx.fillText(tgtStr, rx+70-ctx.measureText(tgtStr).width-2, rowY+12);
+    rx+=70;
+
+    // Ach %
+    const achPctStr=achPct+'%';
+    ctx.fillStyle='#55546a'; ctx.font='9px system-ui';
+    ctx.fillText(achPctStr, rx+65-ctx.measureText(achPctStr).width-2, rowY+12);
+    rx+=65;
+
+    // vs Target %
+    const vsStr=vsPct!==null?vsPct+'%':'—';
+    ctx.fillStyle=vsPct===null?'#55546a':vsPct>=100?'#34d399':vsPct>=60?'#fbbf24':'#f87171';
+    ctx.font='600 9px system-ui';
+    ctx.fillText(vsStr, rx+65-ctx.measureText(vsStr).width-2, rowY+12);
+    rx+=65;
+
+    // Δ MoM
+    const diffStr=diff!=null?(diff>0?'+':'')+diff:'—';
+    ctx.fillStyle=diff==null?'#55546a':diff>0?'#34d399':diff<0?'#f87171':'#9492a8';
+    ctx.font='9px system-ui';
+    ctx.fillText(diffStr, rx+70-ctx.measureText(diffStr).width-2, rowY+12);
+    rx+=70;
+
+    // Δ MoM %
+    const diffPStr=diffP!=null?(diffP>0?'+':'')+diffP+'%':'—';
+    ctx.fillStyle=diffP==null?'#55546a':diffP>0?'#34d399':diffP<0?'#f87171':'#9492a8';
+    ctx.fillText(diffPStr, rx+65-ctx.measureText(diffPStr).width-2, rowY+12);
+    rx+=65;
+
+    // Mini bar (achieved vs target)
+    const barMaxW=170;
+    const achBarW=v>0?Math.max(Math.round((v/Math.max(...dealer.months,1))*barMaxW),3):0;
+    ctx.fillStyle='#1e1e30';
+    ctx.fillRect(rx, rowY+6, barMaxW, 6);
+    if(achBarW>0){
+      ctx.fillStyle=isSel?'#6366f1':vsPct>=100?'#34d399':vsPct>=60?'#fbbf24':'#f87171';
+      ctx.beginPath(); ctx.roundRect(rx, rowY+6, achBarW, 6, 2); ctx.fill();
+    }
+    // Target tick
+    if(mt>0){
+      const tgtX=rx+Math.min(Math.round((mt/Math.max(...dealer.months,1))*barMaxW),barMaxW-1);
+      ctx.strokeStyle='#34d399'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(tgtX,rowY+4); ctx.lineTo(tgtX,rowY+14); ctx.stroke();
+    }
+  });
+
+  // ── Footer ───────────────────────────────────────────
+  ctx.fillStyle='#252538'; ctx.fillRect(36, H-28, W-72, 1);
+  ctx.fillStyle='#55546a'; ctx.font='10px monospace';
+  ctx.fillText(`Generated: ${new Date().toLocaleString('en-IN')} · ${sm?.name||dealer.salesman} · Sales Tracker Pro`, 36, H-12);
+
+  return canvas;
+}
+
+// ── Download ─────────────────────────────────────────────────────────────────
+const downloadDealerCard = (dealer, users, selectedMonthIdx) => {
+  const canvas   = buildCanvas(dealer, users, selectedMonthIdx);
+  const filename = `${dealer.name.replace(/[^a-z0-9]/gi,'_')}_${MO[selectedMonthIdx]}.png`;
+  const link     = document.createElement('a');
+  link.download  = filename;
+  link.href      = canvas.toDataURL('image/png');
+  link.click();
 };
 
-const shareDealerCard=async(dealer,users,selectedMonthIdx)=>{
-  // Build the same canvas as download
-  const sm=users[dealer.salesman];
-  const viewAchieved=dealer.months[selectedMonthIdx]||0;
-  const viewTarget=dealer.monthTargets?.[selectedMonthIdx]??dealer.target;
-  const p=viewTarget?Math.round((viewAchieved/viewTarget)*100):null;
-  const tp=trendPct(dealer.months);
-  const fc=forecast(dealer.months);
-  const total=dealer.months.reduce((a,b)=>a+b,0);
+// ── Share ─────────────────────────────────────────────────────────────────────
+const shareDealerCard = async (dealer, users, selectedMonthIdx) => {
+  const canvas   = buildCanvas(dealer, users, selectedMonthIdx);
+  const filename = `${dealer.name.replace(/[^a-z0-9]/gi,'_')}_${MO[selectedMonthIdx]}.png`;
+  const viewAchieved = dealer.months[selectedMonthIdx]||0;
+  const viewTarget   = dealer.monthTargets?.[selectedMonthIdx]??dealer.target;
+  const p = viewTarget?Math.round((viewAchieved/viewTarget)*100):null;
 
-  const canvas=document.createElement('canvas');
-  canvas.width=1000; canvas.height=700;
-  const ctx=canvas.getContext('2d');
-
-  ctx.fillStyle='#080810'; ctx.fillRect(0,0,1000,700);
-  const grad=ctx.createLinearGradient(0,0,1000,0);
-  grad.addColorStop(0,'#6366f1'); grad.addColorStop(1,'#a78bfa');
-  ctx.fillStyle=grad; ctx.fillRect(0,0,1000,4);
-
-  ctx.fillStyle='#6366f1'; ctx.font='600 11px monospace';
-  ctx.fillText('▸ SALES TRACKER PRO',36,36);
-  ctx.fillStyle='#e2e0f0'; ctx.font='bold 26px system-ui';
-  ctx.fillText(dealer.name,36,70);
-
-  const statusColors={'ACTIVE':'#34d399','ACHIVERS':'#34d399','KEY ACCOUNT':'#a78bfa','INACTIVE':'#fbbf24','DEAD':'#f87171'};
-  const sc=statusColors[(dealer.status||'').toUpperCase()]||'#9492a8';
-  ctx.fillStyle=sc+'22'; ctx.beginPath(); ctx.roundRect(36,82,(dealer.status||'').length*8+20,22,4); ctx.fill();
-  ctx.fillStyle=sc; ctx.font='600 11px system-ui';
-  ctx.fillText(dealer.status||'—',46,97);
-
-  let xOff=36+(dealer.status||'').length*8+30;
-  if(dealer.zone){ctx.fillStyle='#55546a';ctx.font='12px system-ui';ctx.fillText(dealer.zone,xOff,97);xOff+=dealer.zone.length*8+10;}
-  if(dealer.city||dealer.state){ctx.fillStyle='#55546a';ctx.fillText([dealer.city,dealer.state].filter(Boolean).join(', '),xOff,97);}
-  if(dealer.category){xOff+=120;ctx.fillStyle='#818cf8';ctx.fillText('Cat: '+dealer.category+(dealer.categoryType?' / '+dealer.categoryType:''),xOff,97);}
-
-  ctx.fillStyle='#1e1e30'; ctx.fillRect(36,110,928,1);
-
-  const kpis=[
-    {label:MO[selectedMonthIdx]+' Target',value:String(viewTarget||'—'),color:'#e2e0f0'},
-    {label:MO[selectedMonthIdx]+' Achieved',value:String(viewAchieved),color:'#34d399'},
-    {label:'Achievement',value:p!==null?p+'%':'N/T',color:p===null?'#6b7280':p>=100?'#34d399':p>=60?'#fbbf24':'#f87171'},
-    {label:'6-mo Avg',value:String(dealer.avg6m||0),color:'#e2e0f0'},
-    {label:'Forecast',value:String(fc),color:'#6366f1'},
-    {label:'Trend (3m)',value:(tp>0?'+':'')+tp+'%',color:tp>0?'#34d399':tp<0?'#f87171':'#9492a8'},
-    {label:'11mo Total',value:String(total),color:'#e2e0f0'},
-    {label:'Credit Days',value:dealer.creditDays?dealer.creditDays+'d':'—',color:'#e2e0f0'},
-    {label:'Credit Limit',value:dealer.creditLimit?'₹'+dealer.creditLimit.toLocaleString('en-IN'):'—',color:'#e2e0f0'},
-    {label:'Category',value:dealer.category||'—',color:'#818cf8'},
-    {label:'Cat Type',value:dealer.categoryType||'—',color:'#818cf8'},
-    {label:'Salesman',value:sm?.name||dealer.salesman,color:'#fbbf24'},
-  ];
-  kpis.forEach((k,i)=>{
-    const col=i%4,row=Math.floor(i/4);
-    const x=36+col*237,y=126+row*90;
-    ctx.fillStyle='#141422'; ctx.beginPath(); ctx.roundRect(x,y,222,74,8); ctx.fill();
-    ctx.fillStyle='#55546a'; ctx.font='10px system-ui';
-    ctx.fillText(k.label.toUpperCase(),x+12,y+20);
-    ctx.fillStyle=k.color; ctx.font='bold 20px system-ui';
-    ctx.fillText(k.value,x+12,y+50);
-  });
-
-  const chartY=406,chartH=120,chartW=928;
-  const barW=Math.floor(chartW/MO.length)-4;
-  const maxVal=Math.max(...dealer.months,1);
-  ctx.fillStyle='#9492a8'; ctx.font='600 12px system-ui';
-  ctx.fillText('11-Month Performance',36,chartY-10);
-  dealer.months.forEach((v,i)=>{
-    const bh=Math.max((v/maxVal)*(chartH-20),v>0?3:0);
-    const bx=36+i*(barW+4),by=chartY+chartH-bh;
-    const mt=dealer.monthTargets?.[i]??dealer.target;
-    ctx.fillStyle=i===selectedMonthIdx?'#6366f1':'#252538';
-    ctx.beginPath(); ctx.roundRect(bx,by,barW,bh,2); ctx.fill();
-    if(mt>0){
-      const th=Math.max((mt/maxVal)*(chartH-20),2);
-      ctx.strokeStyle='#34d39966'; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.setLineDash([3,3]);
-      ctx.moveTo(bx,chartY+chartH-th); ctx.lineTo(bx+barW,chartY+chartH-th);
-      ctx.stroke(); ctx.setLineDash([]);
-    }
-    ctx.fillStyle=i===selectedMonthIdx?'#6366f1':'#55546a';
-    ctx.font=i===selectedMonthIdx?'bold 9px system-ui':'9px system-ui';
-    ctx.fillText(MO[i].slice(0,3),bx,chartY+chartH+14);
-    if(v>0){ctx.fillStyle=i===selectedMonthIdx?'#fff':'#9492a8';ctx.font='9px system-ui';ctx.fillText(v,bx+2,by-4);}
-  });
-
-  ctx.fillStyle='#55546a'; ctx.font='11px monospace';
-  ctx.fillText(`Generated: ${new Date().toLocaleString('en-IN')} · Salesman: ${sm?.name||dealer.salesman}`,36,680);
-
-  const filename=`${dealer.name.replace(/[^a-z0-9]/gi,'_')}_${MO[selectedMonthIdx]}.png`;
-
-  // Try to share as image file
-  if(navigator.share && navigator.canShare){
-    try{
-      // Convert canvas to Blob then File
-      const blob = await new Promise(res=>canvas.toBlob(res,'image/png'));
+  if(navigator.share && navigator.canShare) {
+    try {
+      const blob = await new Promise(res => canvas.toBlob(res,'image/png'));
       const file = new File([blob], filename, {type:'image/png'});
-      if(navigator.canShare({files:[file]})){
+      if(navigator.canShare({files:[file]})) {
         await navigator.share({
-          title:`${dealer.name} — Sales Report`,
-          text:`${dealer.name} · ${MO[selectedMonthIdx]} · Achieved: ${viewAchieved} / ${viewTarget||'—'} · ${p!==null?p+'%':'N/T'}`,
-          files:[file],
+          title: `${dealer.name} — Sales Report`,
+          text:  `${dealer.name} · ${MO[selectedMonthIdx]} · Achieved: ${viewAchieved}/${viewTarget||'—'} · ${p!==null?p+'%':'N/T'}`,
+          files: [file],
         });
         return;
       }
-    }catch(e){
-      if(e.name==='AbortError') return; // user cancelled — don't fallback
+    } catch(e) {
+      if(e.name==='AbortError') return;
     }
   }
 
-  // Fallback: if Web Share API not available or files not supported — download instead
-  const link=document.createElement('a');
-  link.download=filename;
-  link.href=canvas.toDataURL('image/png');
+  // Fallback: download
+  const link    = document.createElement('a');
+  link.download = filename;
+  link.href     = canvas.toDataURL('image/png');
   link.click();
-  alert('Image saved! (Web Share not supported on this device/browser)');
 };
 
 export { downloadDealerCard, shareDealerCard };

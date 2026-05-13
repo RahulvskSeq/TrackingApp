@@ -95,9 +95,87 @@ export const MonthSelectorBar = ({selectedMonthIdx,setSelectedMonthIdx}) => (
 );
 
 export const SkeletonLoader = () => (
-  <div className="fade">
-    <div style={{marginBottom:22}}><div className="skel" style={{height:14,width:120,marginBottom:10}}/><div className="skel" style={{height:28,width:360}}/></div>
-    <div className="stat-grid">{[1,2,3,4].map(i=>(<div key={i} className="card" style={{padding:16}}><div className="skel" style={{height:10,width:80,marginBottom:10}}/><div className="skel" style={{height:28,width:100,marginBottom:8}}/><div className="skel" style={{height:10,width:120}}/></div>))}</div>
-    <div style={{marginTop:30,textAlign:'center',color:'var(--t3)',fontSize:13,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>Loading data from Google Sheets...</div>
+  <div className="fade" style={{padding:'4px 0'}}>
+    {/* Header skeleton */}
+    <div style={{marginBottom:24}}>
+      <div className="skel" style={{height:10,width:100,marginBottom:10,borderRadius:4}}/>
+      <div className="skel" style={{height:26,width:280,marginBottom:8,borderRadius:6}}/>
+      <div style={{display:'flex',gap:8}}>
+        <div className="skel" style={{height:20,width:70,borderRadius:10}}/>
+        <div className="skel" style={{height:20,width:90,borderRadius:10}}/>
+        <div className="skel" style={{height:20,width:60,borderRadius:10}}/>
+      </div>
+    </div>
+
+    {/* Stat cards */}
+    <div className="stat-grid" style={{marginBottom:20}}>
+      {[1,2,3,4].map(i=>(
+        <div key={i} className="card" style={{padding:16}}>
+          <div className="skel" style={{height:9,width:70,marginBottom:12,borderRadius:4}}/>
+          <div className="skel" style={{height:30,width:80,marginBottom:10,borderRadius:6}}/>
+          <div className="skel" style={{height:8,width:'80%',marginBottom:8,borderRadius:4}}/>
+          <div className="skel" style={{height:4,width:'100%',borderRadius:2}}/>
+        </div>
+      ))}
+    </div>
+
+    {/* Insight chips */}
+    <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
+      {[120,150,110,130,100].map((w,i)=>(
+        <div key={i} className="skel" style={{height:28,width:w,borderRadius:14}}/>
+      ))}
+    </div>
+
+    {/* Chart area */}
+    <div className="card" style={{marginBottom:16,padding:20}}>
+      <div className="skel" style={{height:10,width:160,marginBottom:20,borderRadius:4}}/>
+      <div style={{display:'flex',alignItems:'flex-end',gap:6,height:120}}>
+        {[60,80,50,90,70,110,85,95,65,100,75].map((h,i)=>(
+          <div key={i} className="skel" style={{flex:1,height:`${h}%`,borderRadius:'4px 4px 0 0'}}/>
+        ))}
+      </div>
+      <div style={{display:'flex',gap:6,marginTop:8}}>
+        {[1,2,3,4,5,6,7,8,9,10,11].map(i=>(
+          <div key={i} className="skel" style={{flex:1,height:8,borderRadius:4}}/>
+        ))}
+      </div>
+    </div>
+
+    {/* Table skeleton */}
+    <div className="card" style={{padding:0,overflow:'hidden'}}>
+      <div style={{padding:'12px 16px',borderBottom:'1px solid var(--b1)',display:'flex',gap:10}}>
+        {[200,100,80,80,80,60].map((w,i)=>(
+          <div key={i} className="skel" style={{height:10,width:w,borderRadius:4}}/>
+        ))}
+      </div>
+      {[1,2,3,4,5].map(i=>(
+        <div key={i} style={{padding:'12px 16px',borderBottom:'1px solid var(--b2)',display:'flex',alignItems:'center',gap:10}}>
+          <div className="skel" style={{width:18,height:18,borderRadius:'50%',flexShrink:0}}/>
+          <div className="skel" style={{height:10,flex:2,maxWidth:220,borderRadius:4}}/>
+          <div className="skel" style={{height:10,flex:1,maxWidth:80,borderRadius:4}}/>
+          <div className="skel" style={{height:10,flex:1,maxWidth:60,borderRadius:4}}/>
+          <div className="skel" style={{height:10,flex:1,maxWidth:60,borderRadius:4}}/>
+          <div className="skel" style={{height:18,width:50,borderRadius:8}}/>
+        </div>
+      ))}
+    </div>
+
+    {/* Centered loading text */}
+    <div style={{textAlign:'center',marginTop:32,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+      <div style={{display:'flex',gap:6}}>
+        {[0,1,2].map(i=>(
+          <div key={i} style={{width:8,height:8,borderRadius:'50%',background:'var(--acc)',
+            animation:`bounce 1.2s ease-in-out ${i*0.2}s infinite`,opacity:0.7}}/>
+        ))}
+      </div>
+      <div style={{fontSize:12,color:'var(--t3)'}}>Syncing from Google Sheets...</div>
+    </div>
+
+    <style>{`
+      @keyframes bounce {
+        0%,80%,100%{transform:translateY(0)}
+        40%{transform:translateY(-8px)}
+      }
+    `}</style>
   </div>
 );
