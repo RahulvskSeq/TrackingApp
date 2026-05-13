@@ -507,6 +507,16 @@ function buildCanvas(dealer, users, selectedMonthIdx) {
   return canvas;
 }
 
+// ── Detect environment ───────────────────────────────────────────────────────
+const isAndroidWebView = () => {
+  const ua = navigator.userAgent || '';
+  return /wv/.test(ua) || /Android.*WebView/.test(ua) ||
+    (typeof window.Android !== 'undefined') ||
+    (/Android/.test(ua) && !/Chrome\/[.0-9]*\s/.test(ua));
+};
+
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+
 // ── Download ─────────────────────────────────────────────────────────────────
 const downloadDealerCard = (dealer, users, selectedMonthIdx) => {
   try {
@@ -514,39 +524,24 @@ const downloadDealerCard = (dealer, users, selectedMonthIdx) => {
     const filename = dealer.name.replace(/[^a-z0-9]/gi,'_') + '_' + MO[selectedMonthIdx] + '.png';
     const dataUrl  = canvas.toDataURL('image/png');
 
-    // Method 1: anchor click (works in most browsers + WebView)
-    try {
-      const link     = document.createElement('a');
-      link.download  = filename;
-      link.href      = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      return;
-    } catch(e1) {}
-
-    // Method 2: open in new tab (fallback for WebView/APK)
-    try {
-      const win = window.open();
-      if(win) {
-        win.document.write('<img src="' + dataUrl + '" style="max-width:100%"/>');
-        win.document.write('<br/><a href="' + dataUrl + '" download="' + filename + '">Download</a>');
-        return;
-      }
-    } catch(e2) {}
-
-    // Method 3: Android WebView interface (if app exposes one)
-    if(window.Android && window.Android.downloadImage) {
-      window.Android.downloadImage(dataUrl, filename);
+    // Android WebView / APK — anchor download doesn't work
+    // Must show overlay so user can long-press → save image
+    if(isAndroidWebView() || isIOS()) {
+      showImageOverlay(dataUrl, filename);
       return;
     }
 
-    // Method 4: show image in overlay so user can long-press save
-    showImageOverlay(dataUrl, filename);
+    // Standard browser — anchor click
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
   } catch(err) {
     console.error('Download failed:', err);
-    alert('Download failed. Please try again.');
+    showImageOverlay(null, null, 'Could not generate image. Try again.');
   }
 };
 
@@ -559,35 +554,26 @@ const shareDealerCard = async (dealer, users, selectedMonthIdx) => {
     const viewTarget   = dealer.monthTargets?.[selectedMonthIdx]??dealer.target;
     const p            = viewTarget?Math.round((viewAchieved/viewTarget)*100):null;
     const shareText    = dealer.name + ' · ' + MO[selectedMonthIdx] + ' · Achieved: ' + viewAchieved + '/' + (viewTarget||'—') + ' · ' + (p!==null?p+'%':'N/T');
+    const dataUrl      = canvas.toDataURL('image/png');
 
-    // Method 1: Web Share API with file (mobile browsers + modern WebView)
+    // Web Share API with file — works on Android Chrome, iOS Safari
     if(navigator.share) {
       try {
         const blob = await new Promise(res => canvas.toBlob(res,'image/png'));
         const file = new File([blob], filename, {type:'image/png'});
-        const canShareFiles = navigator.canShare && navigator.canShare({files:[file]});
-
-        if(canShareFiles) {
+        if(navigator.canShare && navigator.canShare({files:[file]})) {
           await navigator.share({ title: dealer.name + ' — Sales Report', text: shareText, files: [file] });
           return;
         }
-        // Share without file (text only)
+        // Share text only
         await navigator.share({ title: dealer.name + ' — Sales Report', text: shareText });
         return;
       } catch(e) {
-        if(e.name==='AbortError') return; // user cancelled
+        if(e.name==='AbortError') return;
       }
     }
 
-    // Method 2: Android WebView interface
-    if(window.Android && window.Android.shareImage) {
-      const dataUrl = canvas.toDataURL('image/png');
-      window.Android.shareImage(dataUrl, filename, shareText);
-      return;
-    }
-
-    // Method 3: Show image overlay — user can long-press to save/share
-    const dataUrl = canvas.toDataURL('image/png');
+    // Fallback: show overlay so user can long-press image → share
     showImageOverlay(dataUrl, filename);
 
   } catch(err) {
@@ -595,29 +581,83 @@ const shareDealerCard = async (dealer, users, selectedMonthIdx) => {
   }
 };
 
-// ── Image overlay (fallback for APK/WebView) ──────────────────────────────────
-// Shows the image full screen so user can long-press to save or share
-function showImageOverlay(dataUrl, filename) {
-  // Remove existing overlay
+// ── Image overlay ────────────────────────────────────────────────────────────
+// Full-screen image view — works in ALL environments including WebView APK
+// User can long-press image on Android to save, or use the buttons
+function showImageOverlay(dataUrl, filename, errorMsg) {
   const existing = document.getElementById('dealer-card-overlay');
   if(existing) existing.remove();
 
   const overlay = document.createElement('div');
   overlay.id = 'dealer-card-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;';
+  overlay.style.cssText = [
+    'position:fixed',
+    'inset:0',
+    'background:rgba(0,0,0,0.97)',
+    'z-index:99999',
+    'display:flex',
+    'flex-direction:column',
+    'align-items:center',
+    'justify-content:center',
+    'padding:16px',
+    'box-sizing:border-box',
+    'overflow-y:auto',
+    '-webkit-overflow-scrolling:touch',
+  ].join(';');
 
-  overlay.innerHTML =
-    '<div style="color:#9492a8;font-size:12px;margin-bottom:12px;text-align:center">Long-press the image to save · Tap outside to close</div>' +
-    '<img src="' + dataUrl + '" style="max-width:100%;max-height:80vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.8)"/>' +
-    '<div style="display:flex;gap:10px;margin-top:14px">' +
-    '<a href="' + dataUrl + '" download="' + filename + '" style="background:#6366f1;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600">⬇ Download</a>' +
-    '<button id="close-overlay-btn" style="background:#252538;color:#9492a8;border:1px solid #252538;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer">✕ Close</button>' +
-    '</div>';
+  if(errorMsg) {
+    overlay.innerHTML =
+      '<div style="color:#f87171;font-size:14px;text-align:center;padding:20px">' + errorMsg + '</div>' +
+      '<button id="close-overlay-btn" style="background:#252538;color:#9492a8;border:none;padding:10px 24px;border-radius:8px;font-size:13px;margin-top:12px">Close</button>';
+  } else {
+    const isAndroid = /Android/.test(navigator.userAgent);
+    const hint = isAndroid
+      ? '📱 Long-press image → "Save image" or "Share"'
+      : '👆 Long-press image to save · Tap outside to close';
 
-  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+    overlay.innerHTML =
+      '<div style="color:#6366f1;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">Dealer Report Card</div>' +
+      '<div style="color:#55546a;font-size:12px;margin-bottom:12px;text-align:center">' + hint + '</div>' +
+      '<div style="width:100%;max-width:600px;overflow-y:auto">' +
+        '<img src="' + dataUrl + '" id="dealer-card-img" style="width:100%;border-radius:8px;display:block;-webkit-user-select:none;user-select:none" />' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;justify-content:center">' +
+        '<button id="overlay-share-btn" style="background:#6366f1;color:#fff;border:none;padding:11px 22px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px">⬆ Share</button>' +
+        '<button id="close-overlay-btn" style="background:#252538;color:#9492a8;border:1px solid #252538;padding:11px 22px;border-radius:8px;font-size:13px;cursor:pointer">✕ Close</button>' +
+      '</div>' +
+      '<div style="color:#3a3a50;font-size:10px;margin-top:10px;text-align:center">' + (filename||'') + '</div>';
+  }
+
   document.body.appendChild(overlay);
+
+  // Close handlers
   const closeBtn = document.getElementById('close-overlay-btn');
   if(closeBtn) closeBtn.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+
+  // Share button — tries Web Share API, else keeps overlay open
+  const shareBtn = document.getElementById('overlay-share-btn');
+  if(shareBtn && dataUrl) {
+    shareBtn.addEventListener('click', async () => {
+      if(navigator.share) {
+        try {
+          const res  = await fetch(dataUrl);
+          const blob = await res.blob();
+          const file = new File([blob], filename||'report.png', {type:'image/png'});
+          if(navigator.canShare && navigator.canShare({files:[file]})) {
+            await navigator.share({ title:'Sales Report', files:[file] });
+          } else {
+            await navigator.share({ title:'Sales Report', text: filename });
+          }
+        } catch(e) { if(e.name==='AbortError') return; }
+      } else {
+        // No Web Share — instruct user to long-press
+        shareBtn.textContent = '👆 Long-press image to share';
+        shareBtn.style.background = '#1e1e30';
+        shareBtn.style.color = '#9492a8';
+      }
+    });
+  }
 }
 
 export { downloadDealerCard, shareDealerCard };
