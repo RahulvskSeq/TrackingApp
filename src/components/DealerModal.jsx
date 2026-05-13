@@ -106,8 +106,8 @@ const DealerModal=({dealer,users,currentUser,onSave,onDelete,onClose,notes,onAdd
               <KPI label="11-mo Total" value={dealer.months.reduce((a,b)=>a+b,0)}/>
               <KPI label="11-mo High" value={Math.max(...dealer.months)}/>
               <KPI label="Active Months" value={dealer.months.filter(v=>v>0).length+'/11'}/>
-              {dealer.category&&<KPI label="Category" value={dealer.category} color="#818cf8"/>}
-              {dealer.categoryType&&<KPI label="Cat Type" value={dealer.categoryType} color="#818cf8"/>}
+              {/* {dealer.category&&<KPI label="Category" value={dealer.category} color="#818cf8"/>}
+              {dealer.categoryType&&<KPI label="Cat Type" value={dealer.categoryType} color="#818cf8"/>} */}
               {dealer.city&&<KPI label="City" value={dealer.city}/>}
               {dealer.state&&<KPI label="State" value={dealer.state}/>}
               {dealer.zone&&<KPI label="Zone" value={dealer.zone}/>}

@@ -88,14 +88,15 @@ const LABEL_CSS = `
     box-shadow: none !important;
     font-family: Inter, system-ui, sans-serif;
     pointer-events: none;
+    transition: opacity 0.3s;
   }
   .state-label-inner {
-    color: rgba(255,255,255,0.85);
+    color: rgba(255,255,255,0.9);
     font-size: 9px;
-    font-weight: 600;
+    font-weight: 700;
     text-align: center;
-    line-height: 1.2;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.7);
+    line-height: 1.3;
+    text-shadow: 0 1px 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.9);
     white-space: nowrap;
     pointer-events: none;
   }
@@ -104,8 +105,22 @@ const LABEL_CSS = `
     font-size: 8px;
     font-weight: 700;
     display: block;
+    text-shadow: 0 1px 4px rgba(0,0,0,1);
   }
   .leaflet-tooltip.state-label::before { display:none; }
+  /* Hide our custom state labels when zoomed in (city labels take over) */
+  .leaflet-zoom-level-7 .state-label,
+  .leaflet-zoom-level-8 .state-label,
+  .leaflet-zoom-level-9 .state-label,
+  .leaflet-zoom-level-10 .state-label { opacity: 0.3; }
+  /* Leaflet label layer tooltip */
+  .leaflet-tooltip-custom {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  .leaflet-tooltip-custom::before { display: none !important; }
 `;
 
 export default function IndiaMap({ dealers=[], users={}, onOpenDealer }) {
@@ -192,9 +207,24 @@ export default function IndiaMap({ dealers=[], users={}, onOpenDealer }) {
     if(!leafletReady||!geoReady||!mapRef.current) return;
     if(mapObjRef.current) return;
     const L=window.L;
-    const map=L.map(mapRef.current,{ center:[22,80], zoom:4, zoomControl:true, scrollWheelZoom:true, attributionControl:false, minZoom:3, maxZoom:10 });
+    const map=L.map(mapRef.current,{ center:[22,80], zoom:4, zoomControl:true, scrollWheelZoom:true, attributionControl:false, minZoom:3, maxZoom:14 });
+    // Create a pane above overlayPane for city labels
+    map.createPane('labelsPane');
+    map.getPane('labelsPane').style.zIndex = 650;
+    map.getPane('labelsPane').style.pointerEvents = 'none';
     mapObjRef.current=map;
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',{ attribution:'© CartoDB', subdomains:'abcd', maxZoom:19 }).addTo(map);
+    // Base dark tile (no labels) - states colored on top
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',{
+      attribution:'© CartoDB', subdomains:'abcd', maxZoom:19, zIndex:1
+    }).addTo(map);
+
+    // Label tile layer on TOP of states - cities/areas appear on zoom
+    // This layer sits above the GeoJSON so city names are always visible
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',{
+      attribution:'© CartoDB', subdomains:'abcd', maxZoom:19,
+      zIndex:10, // above GeoJSON layer
+      pane:'labelsPane',
+    }).addTo(map);
     setTimeout(()=>map.invalidateSize(),100);
     return()=>{ map.remove(); mapObjRef.current=null; layerRef.current=null; };
   }, [leafletReady, geoReady]);
